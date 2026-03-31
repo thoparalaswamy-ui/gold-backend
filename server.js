@@ -1,77 +1,91 @@
 const express = require('express');
 const axios = require('axios');
+const cheerio = require('cheerio');
 const cors = require('cors');
 
 const app = express();
 app.use(cors());
 
-// 📍 City variation
-const cityFactors = {
-  hyderabad: 1.00,
-  vijayawada: 0.995,
-  chennai: 1.01,
-  mumbai: 1.02,
-  delhi: 1.01,
-  bangalore: 1.015,
-};
+// 📍 City fallback
+const defaultCity = "hyderabad";
 
-app.get('/', (req, res) => {
-  res.send('Gold API running 🚀');
-});
+// 🌐 Proxy function (anti-block)
+async function fetchWithProxy(url) {
+  try {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
 
+    const response = await axios.get(proxyUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+
+    return response.data;
+  } catch (err) {
+    throw new Error("Proxy fetch failed");
+  }
+}
+
+// 🟡 Scrape function
+async function scrapeGold(city) {
+  try {
+    const url = `https://www.goodreturns.in/gold-rates/${city}.html`;
+
+    const html = await fetchWithProxy(url);
+    const $ = cheerio.load(html);
+
+    let gold24 = 0;
+    let gold22 = 0;
+
+    $("table tr").each((i, el) => {
+      const text = $(el).text();
+
+      if (text.includes("24K")) {
+        const match = text.match(/([0-9,]+)/);
+        if (match) gold24 = Number(match[1].replace(/,/g, ""));
+      }
+
+      if (text.includes("22K")) {
+        const match = text.match(/([0-9,]+)/);
+        if (match) gold22 = Number(match[1].replace(/,/g, ""));
+      }
+    });
+
+    if (!gold24 || !gold22) throw new Error("Parsing failed");
+
+    return { gold24, gold22 };
+
+  } catch (err) {
+    throw new Error("Scraping failed");
+  }
+}
+
+// 🌍 API
 app.get('/gold', async (req, res) => {
   try {
-    const city = (req.query.city || 'hyderabad').toLowerCase();
-    const factor = cityFactors[city] || 1.0;
+    const city = (req.query.city || defaultCity).toLowerCase();
 
-    // 🟡 MCX gold price (simulate via reliable INR gold API)
-    const response = await axios.get(
-      'https://api.metals.live/v1/spot/gold'
-    );
-
-    // Format: [ [ "gold", price_per_ounce ] ]
-    const ounceUSD = response.data[0][1];
-
-    // USD → INR
-    const usdToInr = 83;
-
-    let priceINR = ounceUSD * usdToInr;
-
-    // Ounce → gram
-    let pricePerGram = priceINR / 31.1;
-
-    // Convert to 10g
-    let gold24 = pricePerGram * 10;
-
-    // Add GST (3%) + margin (~5%)
-    gold24 = gold24 * 1.08;
-
-    // Apply city factor
-    gold24 = gold24 * factor;
-
-    gold24 = Math.round(gold24);
-    const gold22 = Math.round(gold24 * 0.916);
+    const data = await scrapeGold(city);
 
     res.json({
       city,
-      gold24,
-      gold22,
-      source: "mcx_based",
-      currency: "INR",
-      unit: "10g",
+      ...data,
+      source: "scraped_live",
       timestamp: new Date()
     });
 
   } catch (error) {
     res.status(500).json({
-      error: "Failed to fetch Indian gold price",
+      error: "Unable to fetch live gold price",
       details: error.message
     });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+// Root
+app.get('/', (req, res) => {
+  res.send('Gold Scraper API Running 🚀');
 });
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));

@@ -1,7 +1,7 @@
 {
   "name": "gold-backend",
   "version": "1.0.0",
-  "description": "Accurate Gold Price API",
+  "description": "Ultra Fast Gold API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

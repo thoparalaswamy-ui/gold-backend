@@ -1,6 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio');
 const cors = require('cors');
 
 const app = express();
@@ -8,30 +7,22 @@ app.use(cors());
 
 const defaultCity = "hyderabad";
 
-// 🔁 Fetch HTML using proxy (to avoid blocking)
-async function fetchHTML(url) {
-  const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+// 🟡 Scrape function (IMPROVED)
+async function scrapeGold(city) {
+  const url = `https://www.goodreturns.in/gold-rates/${city}.html`;
 
+  const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
   const res = await axios.get(proxy, {
     headers: {
       "User-Agent": "Mozilla/5.0"
     }
   });
 
-  return res.data;
-}
+  const html = res.data;
 
-// 🟡 Scrape Indian gold price (Goodreturns)
-async function scrapeGold(city) {
-  const url = `https://www.goodreturns.in/gold-rates/${city}.html`;
-
-  const html = await fetchHTML(url);
-  const $ = cheerio.load(html);
-
-  const text = $("body").text();
-
-  const match24 = text.match(/24 Carat[^0-9]*([0-9,]+)/i);
-  const match22 = text.match(/22 Carat[^0-9]*([0-9,]+)/i);
+  // 🔥 Strong regex extraction
+  const match24 = html.match(/24 Carat Gold Rate.*?([0-9,]{5,})/s);
+  const match22 = html.match(/22 Carat Gold Rate.*?([0-9,]{5,})/s);
 
   if (!match24 || !match22) {
     throw new Error("Parsing failed");
@@ -43,7 +34,7 @@ async function scrapeGold(city) {
   return { gold24, gold22 };
 }
 
-// 🔄 Fallback (REALISTIC & FIXED CALCULATION)
+// 🔄 Fallback (CORRECTED — NO OVERPRICING)
 async function fallbackGold() {
   const res = await axios.get('https://api.gold-api.com/price/XAU');
 
@@ -51,16 +42,16 @@ async function fallbackGold() {
 
   const usdToInr = 83;
 
-  // Step 1: USD → INR
+  // USD → INR
   let priceINR = ounceUSD * usdToInr;
 
-  // Step 2: ounce → gram
+  // ounce → gram
   let pricePerGram = priceINR / 31.1;
 
-  // Step 3: per 10 grams
+  // per 10g
   let gold24 = pricePerGram * 10;
 
-  // Step 4: India adjustment (GST + duty + margin)
+  // India adjustment (controlled)
   gold24 = gold24 * 1.12;
 
   gold24 = Math.round(gold24);
@@ -73,41 +64,43 @@ async function fallbackGold() {
 app.get('/gold', async (req, res) => {
   const city = (req.query.city || defaultCity).toLowerCase();
 
-  try {
-    // ✅ Try scraping (real Indian data)
-    const data = await scrapeGold(city);
-
-    return res.json({
-      city,
-      ...data,
-      source: "scraped_live",
-      timestamp: new Date()
-    });
-
-  } catch (err) {
-    console.log("❌ Scraping failed → using fallback");
-
+  // 🔁 Retry scraping (3 times)
+  for (let i = 0; i < 3; i++) {
     try {
-      // ✅ Dynamic fallback (correct pricing)
-      const fallback = await fallbackGold();
+      const data = await scrapeGold(city);
 
       return res.json({
         city,
-        ...fallback,
-        source: "live_api",
+        ...data,
+        source: "scraped_live",
         timestamp: new Date()
       });
 
-    } catch (error) {
-      return res.status(500).json({
-        error: "All sources failed",
-        details: error.message
-      });
+    } catch (err) {
+      console.log(`❌ Scrape retry ${i + 1} failed`);
     }
+  }
+
+  // 🔄 Fallback (dynamic)
+  try {
+    const fallback = await fallbackGold();
+
+    return res.json({
+      city,
+      ...fallback,
+      source: "live_api",
+      timestamp: new Date()
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      error: "All sources failed",
+      details: error.message
+    });
   }
 });
 
-// Root route
+// Root
 app.get('/', (req, res) => {
   res.send('Gold API Running 🚀');
 });

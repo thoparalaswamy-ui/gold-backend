@@ -1,80 +1,46 @@
-const express = require("express");
-const axios = require("axios");
-const cors = require("cors");
+const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
 
 const app = express();
 app.use(cors());
 
-// CACHE
-let cache = null;
-let lastFetch = 0;
-const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
+app.get('/', (req, res) => {
+  res.send('Gold API is running 🚀');
+});
 
-// FETCH GOLD PRICE (WORKING SOURCE)
-async function fetchGold() {
+app.get('/gold', async (req, res) => {
   try {
-    // Gold price (USD per ounce)
-    const goldRes = await axios.get(
-      "https://query1.finance.yahoo.com/v8/finance/chart/GC=F"
-    );
+    // Primary API (Gold price USD per ounce)
+    const response = await axios.get('https://api.gold-api.com/price/XAU');
 
-    // USD → INR
-    const currencyRes = await axios.get(
-      "https://open.er-api.com/v6/latest/USD"
-    );
+    const pricePerOunceUSD = response.data.price;
 
-    const ounce =
-      goldRes.data.chart.result[0].meta.regularMarketPrice;
+    // Convert USD → INR (approx)
+    const usdToInr = 83;
 
-    const usdInr = currencyRes.data.rates.INR;
+    const priceINR = pricePerOunceUSD * usdToInr;
 
-    const gram = ((ounce / 31.1035) * usdInr) * 0.75;
+    // Convert ounce → gram (1 ounce = 31.1 grams)
+    const pricePerGram = priceINR / 31.1;
 
-    return {
-      gold24: Math.round(gram),
-      gold22: Math.round(gram * 0.916),
-    };
-  } catch (e) {
-    console.log("Fetch error:", e.message);
-    throw new Error("API failed");
-  }
-}
-
-// API
-app.get("/gold", async (req, res) => {
-  try {
-    // Use cache
-    if (cache && Date.now() - lastFetch < CACHE_TIME) {
-      return res.json({
-        ...cache,
-        source: "cache",
-      });
-    }
-
-    const data = await fetchGold();
-
-    cache = data;
-    lastFetch = Date.now();
+    // Calculate 24k and 22k
+    const gold24 = Math.round(pricePerGram * 10); // per 10g
+    const gold22 = Math.round(gold24 * 0.916);
 
     res.json({
-      ...data,
-      source: "live",
+      gold24,
+      gold22,
+      source: "api_gold"
     });
-  } catch (e) {
-    if (cache) {
-      return res.json({
-        ...cache,
-        source: "fallback-cache",
-      });
-    }
 
+  } catch (error) {
     res.status(500).json({
-      error: "Unable to fetch gold price",
+      error: "Gold API failed",
+      details: error.message
     });
   }
 });
 
-// START SERVER
-app.listen(3000, () => {
-  console.log("Server running at http://localhost:3000");
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));

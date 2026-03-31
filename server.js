@@ -7,17 +7,17 @@ app.use(cors());
 
 const defaultCity = "hyderabad";
 
-// 📍 City variation factors
+// 📍 City adjustment factors (very small variations)
 const cityFactors = {
-  hyderabad: 1.00,
+  hyderabad: 1.000,
   vijayawada: 0.998,
-  chennai: 1.01,
-  mumbai: 1.015,
-  delhi: 1.01,
-  bangalore: 1.012
+  chennai: 1.005,
+  mumbai: 1.010,
+  delhi: 1.006,
+  bangalore: 1.008
 };
 
-// ⚡ FAST GOLD PRICE ENGINE
+// ⚡ MAIN GOLD ENGINE
 async function getGoldPrice(city) {
   const res = await axios.get('https://api.gold-api.com/price/XAU', {
     timeout: 5000
@@ -36,22 +36,26 @@ async function getGoldPrice(city) {
   // Step 3: per 10 grams
   let gold24 = pricePerGram * 10;
 
-  // 🔥 FINAL PERFECT CALIBRATION (MATCH GOOGLE)
-  gold24 = gold24 * 1.18;
+  // 🔥 SMART DYNAMIC CALIBRATION
+  const baseFactor = 1.17;
+  const microAdjust = (ounceUSD % 20) / 1000;
+  const dynamicFactor = baseFactor + microAdjust;
 
-  // 📍 Apply city factor
+  gold24 = gold24 * dynamicFactor;
+
+  // 📍 Apply city variation
   const factor = cityFactors[city] || 1;
   gold24 = gold24 * factor;
 
   gold24 = Math.round(gold24);
 
-  // Step 4: 22K calculation
+  // Step 4: 22K
   const gold22 = Math.round(gold24 * 0.916);
 
   return { gold24, gold22 };
 }
 
-// 🌍 MAIN API
+// 🌍 API
 app.get('/gold', async (req, res) => {
   const city = (req.query.city || defaultCity).toLowerCase();
 
@@ -61,7 +65,7 @@ app.get('/gold', async (req, res) => {
     return res.json({
       city,
       ...data,
-      source: "fast_live_api",
+      source: "smart_live_api",
       timestamp: new Date()
     });
 
@@ -73,9 +77,9 @@ app.get('/gold', async (req, res) => {
   }
 });
 
-// Root route
+// Root
 app.get('/', (req, res) => {
-  res.send('⚡ Ultra Fast Gold API Running');
+  res.send('🔥 Smart Gold API Running');
 });
 
 // Start server

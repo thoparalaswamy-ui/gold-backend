@@ -8,18 +8,20 @@ app.use(cors());
 
 const defaultCity = "hyderabad";
 
-// 🔁 Proxy fetch
+// 🔁 Fetch HTML using proxy (to avoid blocking)
 async function fetchHTML(url) {
   const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+
   const res = await axios.get(proxy, {
     headers: {
       "User-Agent": "Mozilla/5.0"
     }
   });
+
   return res.data;
 }
 
-// 🟡 Scrape Indian site (REAL DATA)
+// 🟡 Scrape Indian gold price (Goodreturns)
 async function scrapeGold(city) {
   const url = `https://www.goodreturns.in/gold-rates/${city}.html`;
 
@@ -41,7 +43,7 @@ async function scrapeGold(city) {
   return { gold24, gold22 };
 }
 
-// 🔄 Live API fallback (ALWAYS DYNAMIC)
+// 🔄 Fallback (REALISTIC & FIXED CALCULATION)
 async function fallbackGold() {
   const res = await axios.get('https://api.gold-api.com/price/XAU');
 
@@ -49,13 +51,19 @@ async function fallbackGold() {
 
   const usdToInr = 83;
 
-  // dynamic premium (not fixed)
-  const premium = 2.25 + (ounceUSD % 100) / 2000;
+  // Step 1: USD → INR
+  let priceINR = ounceUSD * usdToInr;
 
-  const priceINR = ounceUSD * usdToInr * premium;
-  const gram = priceINR / 31.1;
+  // Step 2: ounce → gram
+  let pricePerGram = priceINR / 31.1;
 
-  const gold24 = Math.round(gram * 10);
+  // Step 3: per 10 grams
+  let gold24 = pricePerGram * 10;
+
+  // Step 4: India adjustment (GST + duty + margin)
+  gold24 = gold24 * 1.12;
+
+  gold24 = Math.round(gold24);
   const gold22 = Math.round(gold24 * 0.916);
 
   return { gold24, gold22 };
@@ -66,7 +74,7 @@ app.get('/gold', async (req, res) => {
   const city = (req.query.city || defaultCity).toLowerCase();
 
   try {
-    // ✅ Try real Indian data
+    // ✅ Try scraping (real Indian data)
     const data = await scrapeGold(city);
 
     return res.json({
@@ -77,16 +85,16 @@ app.get('/gold', async (req, res) => {
     });
 
   } catch (err) {
-    console.log("Scraping failed → switching to API");
+    console.log("❌ Scraping failed → using fallback");
 
     try {
-      // ✅ Dynamic fallback
+      // ✅ Dynamic fallback (correct pricing)
       const fallback = await fallbackGold();
 
       return res.json({
         city,
         ...fallback,
-        source: "live_api_dynamic",
+        source: "live_api",
         timestamp: new Date()
       });
 
@@ -99,10 +107,14 @@ app.get('/gold', async (req, res) => {
   }
 });
 
-// Root
+// Root route
 app.get('/', (req, res) => {
-  res.send('Gold API Dynamic Running 🚀');
+  res.send('Gold API Running 🚀');
 });
 
+// Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+
+app.listen(PORT, () => {
+  console.log(`Server running on ${PORT}`);
+});

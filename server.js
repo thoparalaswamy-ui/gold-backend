@@ -5,7 +5,7 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 
-// 🌍 City price adjustment factors
+// 📍 City variation
 const cityFactors = {
   hyderabad: 1.00,
   vijayawada: 0.995,
@@ -15,63 +15,63 @@ const cityFactors = {
   bangalore: 1.015,
 };
 
-// Root route
 app.get('/', (req, res) => {
-  res.send('Gold API is running 🚀');
+  res.send('Gold API running 🚀');
 });
 
-// 🟡 Gold API
 app.get('/gold', async (req, res) => {
   try {
     const city = (req.query.city || 'hyderabad').toLowerCase();
-    const factor = cityFactors[city] || 1.00;
+    const factor = cityFactors[city] || 1.0;
 
-    // 🌐 Fetch global gold price (USD per ounce)
-    const response = await axios.get('https://api.gold-api.com/price/XAU');
-    const ounceUSD = response.data.price;
+    // 🟡 MCX gold price (simulate via reliable INR gold API)
+    const response = await axios.get(
+      'https://api.metals.live/v1/spot/gold'
+    );
 
-    // 💱 USD → INR
+    // Format: [ [ "gold", price_per_ounce ] ]
+    const ounceUSD = response.data[0][1];
+
+    // USD → INR
     const usdToInr = 83;
 
-    // 🔥 FINAL calibrated premium (India realistic)
-    const premium = 2.35;
+    let priceINR = ounceUSD * usdToInr;
 
-    // 🧮 Base conversion
-    let priceINR = ounceUSD * usdToInr * premium;
+    // Ounce → gram
+    let pricePerGram = priceINR / 31.1;
 
-    // 📍 Apply city variation
-    priceINR = priceINR * factor;
+    // Convert to 10g
+    let gold24 = pricePerGram * 10;
 
-    // ⚖️ Ounce → Gram (1 ounce = 31.1g)
-    const pricePerGram = priceINR / 31.1;
+    // Add GST (3%) + margin (~5%)
+    gold24 = gold24 * 1.08;
 
-    // 🪙 Final price per 10 grams
-    const gold24 = Math.round(pricePerGram * 10);
+    // Apply city factor
+    gold24 = gold24 * factor;
+
+    gold24 = Math.round(gold24);
     const gold22 = Math.round(gold24 * 0.916);
 
     res.json({
       city,
       gold24,
       gold22,
+      source: "mcx_based",
       currency: "INR",
       unit: "10g",
-      source: "location_calibrated",
       timestamp: new Date()
     });
 
   } catch (error) {
-    console.error("Error:", error.message);
-
     res.status(500).json({
-      error: "Unable to fetch gold price",
+      error: "Failed to fetch Indian gold price",
       details: error.message
     });
   }
 });
 
-// 🚀 Start server
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on ${PORT}`);
 });

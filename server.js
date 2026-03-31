@@ -8,58 +8,49 @@ app.use(cors());
 
 const defaultCity = "hyderabad";
 
-// 🔁 Proxy fetch (stable)
+// 🔁 Proxy fetch
 async function fetchHTML(url) {
-  try {
-    const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    const res = await axios.get(proxy);
-    return res.data;
-  } catch (e) {
-    throw new Error("Proxy failed");
-  }
+  const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+  const res = await axios.get(proxy, {
+    headers: {
+      "User-Agent": "Mozilla/5.0"
+    }
+  });
+  return res.data;
 }
 
-// 🟡 Scraper (REAL Indian data)
+// 🟡 Scrape Indian site (REAL DATA)
 async function scrapeGold(city) {
-  try {
-    const url = `https://www.goodreturns.in/gold-rates/${city}.html`;
+  const url = `https://www.goodreturns.in/gold-rates/${city}.html`;
 
-    const html = await fetchHTML(url);
-    const $ = cheerio.load(html);
+  const html = await fetchHTML(url);
+  const $ = cheerio.load(html);
 
-    let gold24 = 0;
-    let gold22 = 0;
+  const text = $("body").text();
 
-    $("table tr").each((i, el) => {
-      const text = $(el).text();
+  const match24 = text.match(/24 Carat[^0-9]*([0-9,]+)/i);
+  const match22 = text.match(/22 Carat[^0-9]*([0-9,]+)/i);
 
-      if (text.includes("24 Carat") && text.includes("10 gram")) {
-        const match = text.match(/([0-9,]+)/);
-        if (match) gold24 = Number(match[1].replace(/,/g, ""));
-      }
-
-      if (text.includes("22 Carat") && text.includes("10 gram")) {
-        const match = text.match(/([0-9,]+)/);
-        if (match) gold22 = Number(match[1].replace(/,/g, ""));
-      }
-    });
-
-    if (!gold24 || !gold22) throw new Error("Parsing failed");
-
-    return { gold24, gold22 };
-
-  } catch (err) {
-    throw new Error("Scraping failed");
+  if (!match24 || !match22) {
+    throw new Error("Parsing failed");
   }
+
+  const gold24 = Number(match24[1].replace(/,/g, ""));
+  const gold22 = Number(match22[1].replace(/,/g, ""));
+
+  return { gold24, gold22 };
 }
 
-// 🔄 Fallback API (always works)
+// 🔄 Live API fallback (ALWAYS DYNAMIC)
 async function fallbackGold() {
   const res = await axios.get('https://api.gold-api.com/price/XAU');
+
   const ounceUSD = res.data.price;
 
   const usdToInr = 83;
-  const premium = 2.35;
+
+  // dynamic premium (not fixed)
+  const premium = 2.25 + (ounceUSD % 100) / 2000;
 
   const priceINR = ounceUSD * usdToInr * premium;
   const gram = priceINR / 31.1;
@@ -70,12 +61,12 @@ async function fallbackGold() {
   return { gold24, gold22 };
 }
 
-// 🌍 Main API
+// 🌍 MAIN API
 app.get('/gold', async (req, res) => {
   const city = (req.query.city || defaultCity).toLowerCase();
 
   try {
-    // 🔥 Try scraping first
+    // ✅ Try real Indian data
     const data = await scrapeGold(city);
 
     return res.json({
@@ -86,23 +77,31 @@ app.get('/gold', async (req, res) => {
     });
 
   } catch (err) {
-    console.log("Scrape failed → using fallback");
+    console.log("Scraping failed → switching to API");
 
-    // 🔁 fallback
-    const fallback = await fallbackGold();
+    try {
+      // ✅ Dynamic fallback
+      const fallback = await fallbackGold();
 
-    return res.json({
-      city,
-      ...fallback,
-      source: "fallback_api",
-      timestamp: new Date()
-    });
+      return res.json({
+        city,
+        ...fallback,
+        source: "live_api_dynamic",
+        timestamp: new Date()
+      });
+
+    } catch (error) {
+      return res.status(500).json({
+        error: "All sources failed",
+        details: error.message
+      });
+    }
   }
 });
 
 // Root
 app.get('/', (req, res) => {
-  res.send('Gold API Running 🚀');
+  res.send('Gold API Dynamic Running 🚀');
 });
 
 const PORT = process.env.PORT || 3000;

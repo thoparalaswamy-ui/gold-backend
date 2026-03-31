@@ -1,7 +1,7 @@
 {
   "name": "gold-backend",
   "version": "1.0.0",
-  "description": "Smart Dynamic Gold API",
+  "description": "Auto Calibrated Gold Price API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

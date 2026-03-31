@@ -37,7 +37,7 @@ async function getGoldPrice(city) {
   let gold24 = pricePerGram * 10;
 
   // 🔥 FINAL PERFECT CALIBRATION (MATCH GOOGLE)
-  gold24 = gold24 * 1.20;
+  gold24 = gold24 * 1.18;
 
   // 📍 Apply city factor
   const factor = cityFactors[city] || 1;

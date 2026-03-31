@@ -7,7 +7,7 @@ app.use(cors());
 
 const defaultCity = "hyderabad";
 
-// 📍 City adjustment factors
+// 📍 City variation factors
 const cityFactors = {
   hyderabad: 1.00,
   vijayawada: 0.998,
@@ -17,7 +17,7 @@ const cityFactors = {
   bangalore: 1.012
 };
 
-// ⚡ FAST GOLD PRICE FUNCTION
+// ⚡ FAST GOLD PRICE ENGINE
 async function getGoldPrice(city) {
   const res = await axios.get('https://api.gold-api.com/price/XAU', {
     timeout: 5000
@@ -36,10 +36,10 @@ async function getGoldPrice(city) {
   // Step 3: per 10 grams
   let gold24 = pricePerGram * 10;
 
-  // 🔥 FINAL INDIA MARKET ADJUSTMENT (FIXED)
-  gold24 = gold24 * 1.22;
+  // 🔥 FINAL PERFECT CALIBRATION (MATCH GOOGLE)
+  gold24 = gold24 * 1.20;
 
-  // 📍 Apply city variation
+  // 📍 Apply city factor
   const factor = cityFactors[city] || 1;
   gold24 = gold24 * factor;
 
@@ -82,5 +82,5 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

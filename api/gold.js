@@ -1,11 +1,5 @@
 export default async function handler(req, res) {
   try {
-    // 🔥 EDGE CACHE (1 HOUR CACHE + FAST RESPONSE)
-    res.setHeader(
-      "Cache-Control",
-      "s-maxage=3600, stale-while-revalidate"
-    );
-
     const url =
       "https://raw.githubusercontent.com/thoparalaswamy-ui/gold-json/main/gold-data.json";
 
@@ -15,6 +9,7 @@ export default async function handler(req, res) {
 
     const response = await fetch(url, {
       signal: controller.signal,
+      cache: "no-store", // IMPORTANT for Vercel edge caching
     });
 
     clearTimeout(timeout);
@@ -25,16 +20,25 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
+    // 🚀 EDGE CACHE (CRITICAL FOR 1M USERS)
+    res.setHeader(
+      "Cache-Control",
+      "s-maxage=3600, stale-while-revalidate=86400"
+    );
+
+    // ✅ Ensure proper response type
+    res.setHeader("Content-Type", "application/json");
+
     // ✅ SUCCESS RESPONSE
     res.status(200).json(data);
 
   } catch (error) {
     console.error("❌ ERROR:", error.message);
 
-    // 🔥 FALLBACK RESPONSE (IMPORTANT FOR STABILITY)
-    res.status(200).json({
+    // 🔥 SAFE FALLBACK (keeps app stable)
+    res.status(500).json({
       success: false,
-      message: "Using cached/stale data",
+      message: "Failed to fetch fresh data",
     });
   }
 }

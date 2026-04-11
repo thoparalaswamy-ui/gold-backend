@@ -1,29 +1,37 @@
 import admin from "firebase-admin";
 
-// 🔥 FORCE PARSE ENV
-let serviceAccount = null;
+// 🔥 INIT FIREBASE (FINAL FIX)
+let firebaseReady = false;
 
 try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  console.log("✅ ENV parsed");
-} catch (e) {
-  console.log("❌ ENV parse failed:", e.message);
-}
+  if (!admin.apps.length) {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-// 🔥 FORCE INIT (NO SKIP)
-if (!admin.apps.length && serviceAccount) {
-  try {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    console.log("🔥 Firebase initialized SUCCESS");
-  } catch (e) {
-    console.log("❌ Firebase init error:", e.message);
+    if (!raw) {
+      console.log("❌ ENV missing");
+    } else {
+      const serviceAccount = JSON.parse(raw);
+
+      // ✅ CRITICAL FIX (newline issue)
+      serviceAccount.private_key =
+        serviceAccount.private_key.replace(/\\n/g, "\n");
+
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+
+      firebaseReady = true;
+      console.log("🔥 Firebase initialized SUCCESS");
+    }
+  } else {
+    firebaseReady = true;
+    console.log("⚡ Firebase already initialized");
   }
-} else {
-  console.log("⚠️ Firebase skipped (already init or no env)");
+} catch (e) {
+  console.log("❌ Firebase init error:", e.message);
 }
 
+// 🚀 MAIN API
 export default async function handler(req, res) {
   console.log("🔥 API HIT");
 
@@ -31,7 +39,16 @@ export default async function handler(req, res) {
     const url =
       "https://raw.githubusercontent.com/thoparalaswamy-ui/gold-json/main/gold-data.json";
 
-    const response = await fetch(url, { cache: "no-store" });
+    // ⏱ Timeout protection
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    clearTimeout(timeout);
 
     if (!response.ok) {
       throw new Error("GitHub fetch failed");
@@ -39,20 +56,23 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
+    // 🕒 Ensure updatedAt exists
     if (!data.updatedAt) {
       data.updatedAt = new Date().toISOString();
     }
 
-    // 🔔 TEST FIREBASE
+    console.log("📊 UpdatedAt:", data.updatedAt);
+
+    // 🔔 FIREBASE TEST
     try {
-      if (admin.apps.length) {
+      if (firebaseReady && admin.apps.length) {
         console.log("🚀 Firebase ACTIVE");
 
         await admin.messaging().send({
           topic: "gold",
           notification: {
-            title: "Test Notification",
-            body: "Firebase is working 🚀",
+            title: "Gold Price Updated 💰",
+            body: "Tap to check latest prices",
           },
         });
 
@@ -64,15 +84,18 @@ export default async function handler(req, res) {
       console.log("❌ Firebase runtime error:", e.message);
     }
 
-    res.setHeader("Cache-Control", "no-store");
-    res.status(200).json(data);
+    // 🚫 NO CACHE (important)
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
 
+    res.status(200).json(data);
   } catch (error) {
     console.log("❌ ERROR:", error.message);
 
     res.status(500).json({
       success: false,
-      message: "Failed",
+      message: "Failed to fetch data",
     });
   }
 }

@@ -3,9 +3,22 @@ import admin from "firebase-admin";
 // 🔥 INIT FIREBASE (SAFE)
 if (!admin.apps.length) {
   try {
-    const serviceAccount = JSON.parse(
-      process.env.FIREBASE_SERVICE_ACCOUNT || "{}"
-    );
+    const serviceAccount = let serviceAccount;
+
+try {
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} catch (e) {
+  console.log("❌ ENV PARSE ERROR:", e.message);
+}
+
+if (!admin.apps.length && serviceAccount?.project_id) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+  console.log("🔥 Firebase initialized");
+} else {
+  console.log("⚠️ Firebase not initialized");
+}
 
     if (serviceAccount.project_id) {
       admin.initializeApp({

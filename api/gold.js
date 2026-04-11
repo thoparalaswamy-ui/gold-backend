@@ -1,6 +1,6 @@
 import admin from "firebase-admin";
 
-// 🔥 SAFE FIREBASE INIT
+// 🔥 INIT FIREBASE (SAFE + CLEAN)
 let serviceAccount = null;
 
 try {
@@ -8,22 +8,17 @@ try {
     serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     console.log("✅ ENV parsed");
   } else {
-    console.log("⚠️ ENV missing");
+    console.log("❌ ENV missing");
   }
 } catch (e) {
   console.log("❌ ENV PARSE ERROR:", e.message);
 }
 
-// Initialize Firebase ONLY ONCE
 if (!admin.apps.length && serviceAccount && serviceAccount.project_id) {
-  try {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    console.log("🔥 Firebase initialized");
-  } catch (e) {
-    console.log("❌ Firebase init failed:", e.message);
-  }
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+  console.log("🔥 Firebase initialized");
 } else {
   console.log("⚠️ Firebase not initialized");
 }
@@ -35,11 +30,9 @@ export default async function handler(req, res) {
     const url =
       "https://raw.githubusercontent.com/thoparalaswamy-ui/gold-json/main/gold-data.json";
 
-    // ⏱ TIMEOUT CONTROL
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
-    // 🌐 FETCH DATA (NO CACHE)
     const response = await fetch(url, {
       signal: controller.signal,
       cache: "no-store",
@@ -53,7 +46,6 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // 🕒 Ensure updatedAt exists
     if (!data.updatedAt) {
       data.updatedAt = new Date().toISOString();
     }
@@ -69,12 +61,8 @@ export default async function handler(req, res) {
         const doc = await docRef.get();
         const oldUpdatedAt = doc.exists ? doc.data().updatedAt : null;
 
-        console.log("🧠 Old:", oldUpdatedAt);
-        console.log("🧠 New:", data.updatedAt);
-
-        // ✅ ONLY SEND IF DATA CHANGED
         if (oldUpdatedAt !== data.updatedAt) {
-          console.log("🚀 New data detected → sending notification");
+          console.log("🚀 Sending notification");
 
           await docRef.set({ updatedAt: data.updatedAt });
 
@@ -88,7 +76,7 @@ export default async function handler(req, res) {
 
           console.log("✅ Notification sent");
         } else {
-          console.log("⛔ No change → skip notification");
+          console.log("⛔ No change");
         }
       } else {
         console.log("⚠️ Firebase not initialized");
@@ -97,12 +85,7 @@ export default async function handler(req, res) {
       console.log("❌ Firebase error:", e.message);
     }
 
-    // 🚀 DISABLE CACHE (FIX 304 ISSUE)
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-
-    // ✅ RESPONSE
+    res.setHeader("Cache-Control", "no-store");
     res.status(200).json(data);
 
   } catch (error) {

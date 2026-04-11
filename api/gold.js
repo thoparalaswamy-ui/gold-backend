@@ -1,16 +1,18 @@
 import admin from "firebase-admin";
 
-// 🔥 SAFE FIREBASE INIT (NO CRASH)
-let firebaseInitialized = false;
+export default async function handler(req, res) {
+  console.log("🔥 API HIT");
 
-try {
-  if (!admin.apps.length) {
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  let firebaseInitialized = false;
 
-    if (raw) {
-      const serviceAccount = JSON.parse(raw);
+  // 🔥 INIT INSIDE HANDLER (FIXES VERCEL ISSUE)
+  try {
+    if (!admin.apps.length) {
+      const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-      if (serviceAccount.project_id) {
+      if (raw) {
+        const serviceAccount = JSON.parse(raw);
+
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
@@ -18,40 +20,20 @@ try {
         firebaseInitialized = true;
         console.log("🔥 Firebase initialized");
       } else {
-        console.log("⚠️ Invalid Firebase JSON");
+        console.log("⚠️ ENV missing");
       }
     } else {
-      console.log("⚠️ ENV not found");
+      firebaseInitialized = true;
     }
-  } else {
-    firebaseInitialized = true;
+  } catch (e) {
+    console.log("❌ Firebase init error:", e.message);
   }
-} catch (e) {
-  console.log("❌ Firebase init error:", e.message);
-}
-
-// 🚀 API HANDLER
-export default async function handler(req, res) {
-  console.log("🔥 API HIT");
 
   try {
     const url =
       "https://raw.githubusercontent.com/thoparalaswamy-ui/gold-json/main/gold-data.json";
 
-    // ⏱ Timeout
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch(url, {
-      signal: controller.signal,
-      cache: "no-store",
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      throw new Error("GitHub fetch failed");
-    }
+    const response = await fetch(url, { cache: "no-store" });
 
     const data = await response.json();
 
@@ -94,7 +76,6 @@ export default async function handler(req, res) {
       console.log("❌ Firebase runtime error:", e.message);
     }
 
-    // 🚫 Disable cache
     res.setHeader("Cache-Control", "no-store");
 
     res.status(200).json(data);

@@ -1,36 +1,31 @@
 import admin from "firebase-admin";
 
-// 🔥 INIT FIREBASE (SAFE)
-if (!admin.apps.length) {
-  try {
-    const serviceAccount = let serviceAccount;
+// 🔥 SAFE FIREBASE INIT
+let serviceAccount = null;
 
 try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    console.log("✅ ENV parsed");
+  } else {
+    console.log("⚠️ ENV missing");
+  }
 } catch (e) {
   console.log("❌ ENV PARSE ERROR:", e.message);
 }
 
-if (!admin.apps.length && serviceAccount?.project_id) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-  console.log("🔥 Firebase initialized");
+// Initialize Firebase ONLY ONCE
+if (!admin.apps.length && serviceAccount && serviceAccount.project_id) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log("🔥 Firebase initialized");
+  } catch (e) {
+    console.log("❌ Firebase init failed:", e.message);
+  }
 } else {
   console.log("⚠️ Firebase not initialized");
-}
-
-    if (serviceAccount.project_id) {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-      console.log("🔥 Firebase initialized");
-    } else {
-      console.log("⚠️ Firebase config missing");
-    }
-  } catch (e) {
-    console.log("❌ Firebase init error:", e.message);
-  }
 }
 
 export default async function handler(req, res) {
@@ -102,7 +97,7 @@ export default async function handler(req, res) {
       console.log("❌ Firebase error:", e.message);
     }
 
-    // 🚀 DISABLE ALL CACHING (CRITICAL FIX)
+    // 🚀 DISABLE CACHE (FIX 304 ISSUE)
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");

@@ -1,28 +1,36 @@
 import admin from "firebase-admin";
 
-// 🔥 INIT FIREBASE (SAFE + CLEAN)
-let serviceAccount = null;
+// 🔥 SAFE FIREBASE INIT (NO CRASH)
+let firebaseInitialized = false;
 
 try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    console.log("✅ ENV parsed");
+  if (!admin.apps.length) {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+    if (raw) {
+      const serviceAccount = JSON.parse(raw);
+
+      if (serviceAccount.project_id) {
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+
+        firebaseInitialized = true;
+        console.log("🔥 Firebase initialized");
+      } else {
+        console.log("⚠️ Invalid Firebase JSON");
+      }
+    } else {
+      console.log("⚠️ ENV not found");
+    }
   } else {
-    console.log("❌ ENV missing");
+    firebaseInitialized = true;
   }
 } catch (e) {
-  console.log("❌ ENV PARSE ERROR:", e.message);
+  console.log("❌ Firebase init error:", e.message);
 }
 
-if (!admin.apps.length && serviceAccount && serviceAccount.project_id) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-  console.log("🔥 Firebase initialized");
-} else {
-  console.log("⚠️ Firebase not initialized");
-}
-
+// 🚀 API HANDLER
 export default async function handler(req, res) {
   console.log("🔥 API HIT");
 
@@ -30,6 +38,7 @@ export default async function handler(req, res) {
     const url =
       "https://raw.githubusercontent.com/thoparalaswamy-ui/gold-json/main/gold-data.json";
 
+    // ⏱ Timeout
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
@@ -52,9 +61,9 @@ export default async function handler(req, res) {
 
     console.log("📊 UpdatedAt:", data.updatedAt);
 
-    // 🔔 FIREBASE NOTIFICATION
+    // 🔔 FIREBASE LOGIC
     try {
-      if (admin.apps.length) {
+      if (firebaseInitialized) {
         const db = admin.firestore();
         const docRef = db.collection("meta").doc("gold");
 
@@ -79,21 +88,23 @@ export default async function handler(req, res) {
           console.log("⛔ No change");
         }
       } else {
-        console.log("⚠️ Firebase not initialized");
+        console.log("⚠️ Firebase skipped");
       }
     } catch (e) {
-      console.log("❌ Firebase error:", e.message);
+      console.log("❌ Firebase runtime error:", e.message);
     }
 
+    // 🚫 Disable cache
     res.setHeader("Cache-Control", "no-store");
+
     res.status(200).json(data);
 
   } catch (error) {
-    console.error("❌ ERROR:", error.message);
+    console.error("❌ API ERROR:", error.message);
 
     res.status(500).json({
       success: false,
-      message: "Failed to fetch fresh data",
+      error: error.message,
     });
   }
 }

@@ -1,33 +1,31 @@
 import admin from "firebase-admin";
 
-export default async function handler(req, res) {
-  console.log("🔥 API HIT");
+// 🔥 FORCE PARSE ENV
+let serviceAccount = null;
 
-  let firebaseInitialized = false;
+try {
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  console.log("✅ ENV parsed");
+} catch (e) {
+  console.log("❌ ENV parse failed:", e.message);
+}
 
-  // 🔥 INIT INSIDE HANDLER (FIXES VERCEL ISSUE)
+// 🔥 FORCE INIT (NO SKIP)
+if (!admin.apps.length && serviceAccount) {
   try {
-    if (!admin.apps.length) {
-      const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-
-      if (raw) {
-        const serviceAccount = JSON.parse(raw);
-
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-        });
-
-        firebaseInitialized = true;
-        console.log("🔥 Firebase initialized");
-      } else {
-        console.log("⚠️ ENV missing");
-      }
-    } else {
-      firebaseInitialized = true;
-    }
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log("🔥 Firebase initialized SUCCESS");
   } catch (e) {
     console.log("❌ Firebase init error:", e.message);
   }
+} else {
+  console.log("⚠️ Firebase skipped (already init or no env)");
+}
+
+export default async function handler(req, res) {
+  console.log("🔥 API HIT");
 
   try {
     const url =
@@ -35,57 +33,46 @@ export default async function handler(req, res) {
 
     const response = await fetch(url, { cache: "no-store" });
 
+    if (!response.ok) {
+      throw new Error("GitHub fetch failed");
+    }
+
     const data = await response.json();
 
     if (!data.updatedAt) {
       data.updatedAt = new Date().toISOString();
     }
 
-    console.log("📊 UpdatedAt:", data.updatedAt);
-
-    // 🔔 FIREBASE LOGIC
+    // 🔔 TEST FIREBASE
     try {
-      if (firebaseInitialized) {
-        const db = admin.firestore();
-        const docRef = db.collection("meta").doc("gold");
+      if (admin.apps.length) {
+        console.log("🚀 Firebase ACTIVE");
 
-        const doc = await docRef.get();
-        const oldUpdatedAt = doc.exists ? doc.data().updatedAt : null;
+        await admin.messaging().send({
+          topic: "gold",
+          notification: {
+            title: "Test Notification",
+            body: "Firebase is working 🚀",
+          },
+        });
 
-        if (oldUpdatedAt !== data.updatedAt) {
-          console.log("🚀 Sending notification");
-
-          await docRef.set({ updatedAt: data.updatedAt });
-
-          await admin.messaging().send({
-            topic: "gold",
-            notification: {
-              title: "Gold Price Updated 💰",
-              body: "Tap to check latest prices",
-            },
-          });
-
-          console.log("✅ Notification sent");
-        } else {
-          console.log("⛔ No change");
-        }
+        console.log("✅ Notification sent");
       } else {
-        console.log("⚠️ Firebase skipped");
+        console.log("❌ Firebase NOT ACTIVE");
       }
     } catch (e) {
       console.log("❌ Firebase runtime error:", e.message);
     }
 
     res.setHeader("Cache-Control", "no-store");
-
     res.status(200).json(data);
 
   } catch (error) {
-    console.error("❌ API ERROR:", error.message);
+    console.log("❌ ERROR:", error.message);
 
     res.status(500).json({
       success: false,
-      error: error.message,
+      message: "Failed",
     });
   }
 }

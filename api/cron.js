@@ -89,7 +89,7 @@ export default async function handler(req, res) {
     const hourUTC = now.getUTCHours();
     const minuteUTC = now.getUTCMinutes();
 
-    if (hourUTC === 12 && minuteUTC >= 30 && minuteUTC < 40 && !eveningSent) {
+    if (hourUTC === 12 && minuteUTC >= 30 && minuteUTC < 40 && !eveningSent){
       await admin.messaging().send({
         topic: "gold",
         notification: {

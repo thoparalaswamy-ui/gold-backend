@@ -1,71 +1,89 @@
 import admin from "firebase-admin";
 import axios from "axios";
 
-// 🔐 Load Firebase key from Vercel env
-const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
-
-// 🚀 Initialize Firebase (only once)
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-}
-
-// 📲 API handler
 export default async function handler(req, res) {
   try {
-    console.log("📊 Fetching gold data...");
+    console.log("🔥 STEP 1: API START");
 
-    // 🔗 Fetch gold data
-    const response = await axios.get(
-      "https://gold-backend-2scw.vercel.app/api/gold"
-    );
+    // 🔐 ENV CHECK
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!raw) {
+      return res.status(200).json({ error: "ENV missing" });
+    }
+
+    console.log("🔥 STEP 2: ENV OK");
+
+    let serviceAccount;
+    try {
+      serviceAccount = JSON.parse(raw);
+      serviceAccount.private_key =
+        serviceAccount.private_key.replace(/\\n/g, "\n");
+    } catch (e) {
+      return res.status(200).json({ error: "ENV parse error" });
+    }
+
+    console.log("🔥 STEP 3: JSON PARSED");
+
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+    }
+
+    console.log("🔥 STEP 4: Firebase initialized");
+
+    // 🔗 FETCH DATA
+    let response;
+    try {
+      response = await axios.get(
+        "https://gold-backend-2scw.vercel.app/api/gold"
+      );
+    } catch (e) {
+      return res.status(200).json({ error: "API fetch failed" });
+    }
+
+    console.log("🔥 STEP 5: API fetched");
 
     const data = response.data;
+
+    if (!data || !data.data) {
+      return res.status(200).json({ error: "Invalid data structure" });
+    }
+
     const city = Object.keys(data.data)[0];
 
     const today = data.data[city].today;
     const last7 = data.data[city].last7Days;
-    const yesterday = last7[last7.length - 2];
 
-    // 🔢 Calculate change (10g)
+    if (!last7 || last7.length < 2) {
+      return res.status(200).json({ error: "Not enough history" });
+    }
+
+    console.log("🔥 STEP 6: Data ready");
+
+    const sorted = [...last7].sort(
+      (a, b) => new Date(a.date) - new Date(b.date)
+    );
+
+    const yesterday = sorted[sorted.length - 2];
+
     const diff24 = Math.round(today.gold24 - yesterday.gold24);
-    const diff22 = Math.round(today.gold22 - yesterday.gold22);
 
-    // 🧠 Format message
-    const format = (label, diff) => {
-      if (diff > 0) return `${label} ↑ ₹${diff}`;
-      if (diff < 0) return `${label} ↓ ₹${Math.abs(diff)}`;
-      return `${label} no change`;
-    };
+    const message = `24K change ₹${diff24}`;
 
-    const message = `${format("24K", diff24)} | ${format("22K", diff22)}`;
+    console.log("🔥 STEP 7: Sending notification");
 
-    console.log("📩 Sending Notification:", message);
-
-    // 📩 Send notification to topic
-    const firebaseResponse = await admin.messaging().send({
+    await admin.messaging().send({
       topic: "gold",
       notification: {
-        title: "🔔 Daily Gold Price Update (10g)",
+        title: "Test",
         body: message,
       },
     });
 
-    console.log("✅ Notification sent:", firebaseResponse);
+    console.log("🔥 STEP 8: SUCCESS");
 
-    // ✅ IMPORTANT: return response
-    return res.status(200).json({
-      success: true,
-      message,
-    });
+    return res.status(200).json({ success: true });
 
-  } catch (error) {
-    console.error("❌ Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-}
+  } catch (e) {
+    console.log("🔥 FINAL CR

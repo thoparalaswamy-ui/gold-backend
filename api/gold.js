@@ -1,6 +1,6 @@
 import admin from "firebase-admin";
 
-// 🔥 INIT FIREBASE (ONCE)
+// 🔥 INIT FIREBASE
 let firebaseReady = false;
 
 try {
@@ -10,7 +10,6 @@ try {
     if (raw) {
       const serviceAccount = JSON.parse(raw);
 
-      // ✅ FIX PRIVATE KEY
       serviceAccount.private_key =
         serviceAccount.private_key.replace(/\\n/g, "\n");
 
@@ -30,43 +29,55 @@ try {
   console.log("❌ Firebase init error:", e.message);
 }
 
-// 🚀 MAIN API (SERVES CACHE ONLY)
+// 🚀 MAIN API
 export default async function handler(req, res) {
   console.log("🔥 API HIT");
 
   try {
+    if (!firebaseReady) {
+      return res.status(200).json({
+        success: false,
+        message: "Firebase not initialized",
+      });
+    }
+
     const db = admin.firestore();
 
     const doc = await db.collection("cache").doc("gold").get();
 
     if (!doc.exists) {
-      return res.status(500).json({
+      return res.status(200).json({
         success: false,
         message: "Data not ready yet",
       });
     }
 
-    const data = doc.data();
+    const data = doc.data() || {};
 
-    // 🕒 Safety fallback
+    if (!data.data) {
+      return res.status(200).json({
+        success: false,
+        message: "Invalid data structure",
+      });
+    }
+
     if (!data.updatedAt) {
       data.updatedAt = new Date().toISOString();
     }
 
-    // 🚀 CDN CACHE (CRITICAL FOR 1M USERS)
     res.setHeader(
       "Cache-Control",
       "public, s-maxage=300, stale-while-revalidate=600"
     );
 
-    res.status(200).json(data);
+    return res.status(200).json(data);
 
   } catch (error) {
     console.log("❌ ERROR:", error.message);
 
-    res.status(500).json({
+    return res.status(200).json({
       success: false,
-      message: "Failed to fetch cached data",
+      message: error.message,
     });
   }
 }

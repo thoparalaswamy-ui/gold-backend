@@ -22,7 +22,7 @@ if (!admin.apps.length) {
   }
 }
 
-// 🔁 FETCH WITH RETRY (IMPORTANT)
+// 🔁 FETCH WITH RETRY
 async function fetchWithRetry(url, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -38,10 +38,10 @@ async function fetchWithRetry(url, retries = 3) {
     await new Promise((r) => setTimeout(r, 1000));
   }
 
-  throw new Error("GitHub fetch failed after retries");
+  throw new Error("GitHub fetch failed");
 }
 
-// 🚀 CRON HANDLER
+// 🚀 CRON HANDLER (NOTIFICATION ONLY)
 export default async function handler(req, res) {
   try {
     console.log("⏰ CRON START");
@@ -54,8 +54,6 @@ export default async function handler(req, res) {
     const data = await fetchWithRetry(url);
 
     const db = admin.firestore();
-
-    const cacheRef = db.collection("cache").doc("gold");
     const metaRef = db.collection("meta").doc("gold");
 
     const metaDoc = await metaRef.get();
@@ -63,45 +61,64 @@ export default async function handler(req, res) {
     const oldUpdatedAt = metaDoc.exists ? metaDoc.data().updatedAt : null;
     const eveningSent = metaDoc.exists ? metaDoc.data().eveningSent : false;
 
-    // 🟢 FIRST NOTIFICATION (NOON UPDATE)
+    // 🧠 GET TODAY DATA (FIRST CITY)
+    const city = Object.keys(data.data)[0];
+    const today = data.data[city].today;
+    const last7 = data.data[city].last7Days;
+
+    const yesterday = last7[last7.length - 2];
+
+    const diff24 = Math.round(today.gold24 - yesterday.gold24);
+    const diff22 = Math.round(today.gold22 - yesterday.gold22);
+
+    const format = (label, diff) => {
+      if (diff > 0) return `${label} ↑ ₹${diff}`;
+      if (diff < 0) return `${label} ↓ ₹${Math.abs(diff)}`;
+      return `${label} no change`;
+    };
+
+    const message = `${format("24K", diff24)} | ${format("22K", diff22)}`;
+
+    // 🟢 PRICE CHANGE NOTIFICATION
     if (oldUpdatedAt !== data.updatedAt) {
-      await cacheRef.set(data);
-
-      await metaRef.set({
-        updatedAt: data.updatedAt,
-        eveningSent: false, // reset for evening
-      });
-
       await admin.messaging().send({
         topic: "gold",
         notification: {
-          title: "Gold Price Updated 💰",
-          body: "Latest gold prices available now",
+          title: "🔔 Gold Price Updated",
+          body: message,
         },
       });
 
-      console.log("🚀 Noon notification sent");
+      await metaRef.set({
+        updatedAt: data.updatedAt,
+        eveningSent: false,
+      });
+
+      console.log("🚀 Price update notification sent");
     } else {
-      console.log("⛔ No new data");
+      console.log("⛔ No new price update");
     }
 
-    // 🌙 EVENING NOTIFICATION (ONLY ONCE)
+    // 🌙 EVENING REMINDER (ONCE)
     const hourUTC = now.getUTCHours();
     const minuteUTC = now.getUTCMinutes();
 
-    if (hourUTC === 12 && minuteUTC >= 30 && minuteUTC < 40 && !eveningSent){
+    if (
+      hourUTC === 12 &&
+      minuteUTC >= 30 &&
+      minuteUTC < 40 &&
+      !eveningSent
+    ) {
       await admin.messaging().send({
         topic: "gold",
         notification: {
-          title: "Evening Gold Update 🌙",
+          title: "🌙 Evening Gold Reminder",
           body: "Check today's gold prices",
         },
       });
 
       await metaRef.set(
-        {
-          eveningSent: true,
-        },
+        { eveningSent: true },
         { merge: true }
       );
 
@@ -109,6 +126,7 @@ export default async function handler(req, res) {
     }
 
     res.status(200).json({ success: true });
+
   } catch (e) {
     console.log("❌ CRON ERROR:", e.message);
     res.status(500).end();

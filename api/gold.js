@@ -1,73 +1,31 @@
-import admin from "firebase-admin";
-
-// 🔥 INIT FIREBASE
-let firebaseReady = false;
-
-try {
-  if (!admin.apps.length) {
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-
-    if (raw) {
-      const serviceAccount = JSON.parse(raw);
-
-      serviceAccount.private_key =
-        serviceAccount.private_key.replace(/\\n/g, "\n");
-
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-
-      firebaseReady = true;
-      console.log("🔥 Firebase initialized");
-    } else {
-      console.log("⚠️ ENV missing");
-    }
-  } else {
-    firebaseReady = true;
-  }
-} catch (e) {
-  console.log("❌ Firebase init error:", e.message);
-}
-
-// 🚀 MAIN API
 export default async function handler(req, res) {
-  console.log("🔥 API HIT");
-
   try {
-    if (!firebaseReady) {
-      return res.status(200).json({
-        success: false,
-        message: "Firebase not initialized",
-      });
+    console.log("🔥 API HIT");
+
+    const isForce = req.query.force === "true";
+
+    const baseUrl =
+      "https://raw.githubusercontent.com/thoparalaswamy-ui/gold-json/main/gold-data.json";
+
+    // 🔥 ALWAYS BYPASS CACHE FOR FORCE
+    const url = `${baseUrl}?t=${Date.now()}`;
+
+    const response = await fetch(url, {
+      cache: "no-store", // 🔥 CRITICAL
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch data");
     }
 
-    const db = admin.firestore();
+    const data = await response.json();
 
-    const doc = await db.collection("cache").doc("gold").get();
-
-    if (!doc.exists) {
-      return res.status(200).json({
-        success: false,
-        message: "Data not ready yet",
-      });
-    }
-
-    const data = doc.data() || {};
-
-    if (!data.data) {
-      return res.status(200).json({
-        success: false,
-        message: "Invalid data structure",
-      });
-    }
-
-    if (!data.updatedAt) {
-      data.updatedAt = new Date().toISOString();
-    }
-
+    // 🔥 DISABLE VERCEL CACHE
     res.setHeader(
       "Cache-Control",
-      "public, s-maxage=300, stale-while-revalidate=600"
+      isForce
+        ? "no-store, no-cache, must-revalidate"
+        : "public, max-age=60, stale-while-revalidate=120"
     );
 
     return res.status(200).json(data);
@@ -75,7 +33,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.log("❌ ERROR:", error.message);
 
-    return res.status(200).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });

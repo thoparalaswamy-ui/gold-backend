@@ -1,41 +1,46 @@
+import admin from "firebase-admin";
+
+if (!admin.apps.length) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+  serviceAccount.private_key =
+    serviceAccount.private_key.replace(/\\n/g, "\n");
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
+
 export default async function handler(req, res) {
   try {
-    console.log("🔥 API HIT");
+    console.log("🔥 GOLD API HIT");
 
-    const isForce = req.query.force === "true";
+    const db = admin.firestore();
 
-    const baseUrl =
-      "https://raw.githubusercontent.com/thoparalaswamy-ui/gold-json/main/gold-data.json";
+    const doc = await db.collection("cache").doc("gold").get();
 
-    // 🔥 ALWAYS BYPASS CACHE FOR FORCE
-    const url = `${baseUrl}?t=${Date.now()}`;
-
-    const response = await fetch(url, {
-      cache: "no-store", // 🔥 CRITICAL
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch data");
+    if (!doc.exists) {
+      return res.status(200).json({
+        success: false,
+        message: "No data available",
+      });
     }
 
-    const data = await response.json();
+    const data = doc.data();
 
-    // 🔥 DISABLE VERCEL CACHE
     res.setHeader(
       "Cache-Control",
-      isForce
-        ? "no-store, no-cache, must-revalidate"
-        : "public, max-age=60, stale-while-revalidate=120"
+      "public, max-age=10, stale-while-revalidate=30"
     );
 
     return res.status(200).json(data);
 
-  } catch (error) {
-    console.log("❌ ERROR:", error.message);
+  } catch (e) {
+    console.log("❌ ERROR:", e.message);
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: e.message,
     });
   }
 }
